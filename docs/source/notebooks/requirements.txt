@@ -3,3 +3,4 @@ tqdm
 qiskit
 qutip
 nbconvert
+seaborn
