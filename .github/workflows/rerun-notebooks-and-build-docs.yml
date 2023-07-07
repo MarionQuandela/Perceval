@@ -6,8 +6,7 @@ name: Build and deploy docs
 # Controls when the action will run. Workflow runs when manually triggered using the UI
 # or API.
 on:
-  release:
-    types: [published]
+  push:
 
   workflow_dispatch:
 
