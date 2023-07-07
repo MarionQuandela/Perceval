@@ -1,0 +1,5 @@
+jupyter
+tqdm
+qiskit
+qutip
+nbconvert
