@@ -31,6 +31,7 @@ from .statevector import BasicState, BSDistribution, StateVector
 
 import json
 import re
+from sly import Lexer, Parser
 from typing import Callable, List, Tuple
 
 
@@ -276,3 +277,138 @@ def post_select_statevector(
             logical_perf -= abs(ampli)**2
     result.normalize()
     return result, logical_perf
+
+
+class PostSelectionExpression():
+    def __init__(self, modes=None, n=None, operator_method=None):
+        self.modes = modes
+        self.n = n
+        self.operator_method = operator_method
+
+    def eval_bs(self, bs: BasicState):
+        n = sum([bs[i]for i in self.modes])
+        return self.operator_method(n, self.n)
+
+    def __str__(self):
+        return f"{self.modes}{self.operator_method.__name__}{self.n}"
+
+
+class ExprLexer(Lexer):
+    tokens = {MODES, OPERATOR, PHOTONS}
+    ignore = ' \t\n'
+
+    MODES = r"\[[,0-9\s]+\]"
+
+    OPERATOR = r'[<=>]=?'
+
+    PHOTONS = r'\d+'
+
+
+class ExprParser(Parser):
+    tokens = ExprLexer.tokens
+
+    _OPERATORS = {"==": int.__eq__,
+                  "<": int.__lt__,
+                  ">": int.__gt__,
+                  ">=": int.__ge__,
+                  "<=": int.__le__}
+
+    def __init__(self, expr: str):
+        self.pse = PostSelectionExpression()
+        self.expr = self.parse(ExprLexer().tokenize(expr))
+
+    @_('MODES')
+    def term(self, p):
+        self.pse.modes = json.loads(p.MODES)
+        return self.pse.modes
+
+    def handle_operator(self, operator):
+        if operator not in self._OPERATORS:
+            raise RuntimeError(f"Unknow operator {operator}")
+        return self._OPERATORS[operator]
+
+    @_('PHOTONS')
+    def term(self, p):
+        self.pse.n = int(p.PHOTONS)
+        return self.pse.n
+
+    @_('expr OPERATOR expr')
+    def term(self, p):
+        self.pse.operator_method = self.handle_operator(p.OPERATOR)
+        return (self.pse.operator_method, p.expr0, p.expr1)
+
+    @_('term')
+    def expr(self, p):
+        return p.term
+
+    def error(self, t):
+        raise RuntimeError()
+
+class PSLexer(Lexer):
+    tokens = {EXPR, LPAREN, RPAREN, AND, OR}
+    ignore = ' \t\n'
+
+    EXPR = r"(\[[,0-9\s]+\]\s*)([^\d]*)\s*(\d+\b)"
+    LPAREN = r'\('
+    RPAREN = r'\)'
+    AND = r'\&'
+    OR = r'\|'
+
+
+class YACCPostSelect(Parser):
+    tokens = PSLexer.tokens
+
+    def __init__(self, expr: str = None):
+        if not expr:
+            self.expr = expr
+        else:
+            try:
+                self.expr = self.parse(PSLexer().tokenize(expr))
+            except:
+                raise RuntimeError()
+
+    @staticmethod
+    def and_method(lh, rh):
+        return lh and rh
+
+    @_('expr AND expr')
+    def expr(self, p):
+        return (YACCPostSelect.and_method, p.expr0, p.expr1)
+
+    @staticmethod
+    def or_method(lh, rh):
+        return lh or rh
+
+    @_('expr OR expr')
+    def expr(self, p):
+        return (YACCPostSelect.or_method, p.expr0, p.expr1)
+
+    @_('EXPR')
+    def term(self, p):
+        return ExprParser(p.EXPR).pse
+
+    @_('LPAREN expr RPAREN')
+    def term(self, p):
+        return p.expr
+
+    @_('term')
+    def expr(self, p):
+        return p.term
+
+    @staticmethod
+    def eval_expr(expr, bs: BasicState):
+        if isinstance(expr, PostSelectionExpression):
+            return expr.eval_bs(bs)
+        args = [None, None]
+        method, args[0], args[1] = expr
+        for i in range(len(args)):
+            if isinstance(args[i], tuple):
+                args[i] = YACCPostSelect.eval_expr(args[i], bs)
+            elif isinstance(args[i], PostSelectionExpression):
+                args[i] = args[i].eval_bs(bs)
+        return method(args[0], args[1])
+
+    def __call__(self, state: BasicState) -> bool:
+        if not self.expr:
+            return True
+        return YACCPostSelect.eval_expr(self.expr, state)

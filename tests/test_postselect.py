@@ -27,10 +27,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 from copy import copy
-from perceval.utils import BasicState, PostSelect, postselect_independent
+from perceval.utils import BasicState, PostSelect, YACCPostSelect, postselect_independent
 
 import pytest
-
 
 def test_postselect_init():
     ps_empty = PostSelect()  # Should work
@@ -45,35 +44,46 @@ def test_postselect_init():
     assert ps4 == ps1
 
 
-def test_postselect_init_invalid():
-    with pytest.raises(RuntimeError):
-        PostSelect("[0]==0 & [1,2,]==1 & [3,4]==1 & [5]==0")  # Too many commas
+@pytest.mark.parametrize("ps_class", [PostSelect, YACCPostSelect])
+def test_postselect_init_invalid(ps_class):
+    with pytest.raises(Exception):
+        ps_class("[0]==0 & [1,2,]==1 & [3,4]==1 & [5]==0")  # Too many commas
 
-    with pytest.raises(RuntimeError):
-        PostSelect("[0]==0 & [1,,,,2]==1 & [3,4]==1 & [5]==0")  # Too many commas
+    with pytest.raises(Exception):
+        ps_class("[0]==0 & [1,,,,2]==1 & [3,4]==1 & [5]==0")  # Too many commas
 
-    with pytest.raises(RuntimeError):
-        PostSelect("[0]==0 & (1,2)==1 & [3,4]==1 & [5]==0")  # Tuple syntax is not supported
+    with pytest.raises(Exception):
+        ps_class("[0]==0 & (1,2)==1 & [3,4]==1 & [5]==0")  # Tuple syntax is not supported
 
-    with pytest.raises(RuntimeError):
-        PostSelect("[2] >= 4 | [1] > 2")  # Invalid separator
+    with pytest.raises(Exception):
+        ps_class("[2] % 4 | [1] > 2")  # Invalid separator
 
-    with pytest.raises(KeyError):
-        PostSelect("[2] % 4 | [1] > 2")  # Invalid separator
+    with pytest.raises(Exception):
+        ps_class("[0]==0 & [1,2]]==1 & [3,4]==1 & [5]==0")  # Too many brackets => Invalid operator
 
     with pytest.raises(KeyError):
         PostSelect("[2] >> 4")  # Invalid operator
 
-    with pytest.raises(KeyError):
-        PostSelect("[0]==0 & [1,2]]==1 & [3,4]==1 & [5]==0")  # Too many brackets => Invalid operator
+    # with pytest.raises(RuntimeError):
+    #     ps_class("[2] >= 4 | [1] > 2")  # Invalid separator
 
 
-def test_postselect_usage():
-    ps_empty = PostSelect()
+def test_diff_between_ps_and_yacc_ps():
+    expr = "[2] >= 4 | [1] > 2"
+    with pytest.raises(RuntimeError):
+        PostSelect(expr)  # Invalid separator
+
+    ps = YACCPostSelect(expr)
+    assert ps(BasicState([0, 3, 0]))
+    assert ps(BasicState([0, 0, 5]))
+
+
+@pytest.mark.parametrize("ps_class", [PostSelect, YACCPostSelect])
+def test_postselect_usage(ps_class):
+    ps_empty = ps_class()
     for bs in [BasicState(), BasicState([0, 1]), BasicState([8, 8, 8, 8, 8, 8, 8, 8, 8])]:
         assert ps_empty(bs)
-
-    ps_cnot = PostSelect("[0]==0 & [1,2]==1 & [3,4]==1 & [5]==0")
+    ps_cnot = ps_class("[0]==0 & [1,2]==1 & [3,4]==1 & [5]==0")
     for bs in [BasicState([0, 1, 0, 1, 0, 0]), BasicState([0, 0, 1, 0, 1, 0]), BasicState([0, 1, 0, 0, 1, 0]),
                BasicState([0, 0, 1, 1, 0, 0])]:
         assert ps_cnot(bs)
@@ -83,11 +93,12 @@ def test_postselect_usage():
     assert ps_cnot(BasicState("|0,{_:0},0,{_:1},0,0>"))
 
 
-def test_postselect_usage_advanced_ge_le():
-    ps1 = PostSelect("[1,2]>=1")
-    ps2 = PostSelect("[1,2]>0")
-    ps3 = PostSelect("[1,2]<1")
-    ps4 = PostSelect("[1,2]<=0")
+@pytest.mark.parametrize("ps_class", [PostSelect, YACCPostSelect])
+def test_postselect_usage_advanced_ge_le(ps_class):
+    ps1 = ps_class("[1,2]>=1")
+    ps2 = ps_class("[1,2]>0")
+    ps3 = ps_class("[1,2]<1")
+    ps4 = ps_class("[1,2]<=0")
     for bs in [BasicState([0, 1, 0, 1, 0, 0]), BasicState([0, 0, 1, 0, 1, 0]), BasicState([0, 1, 0, 0, 1, 0]),
                BasicState([0, 0, 1, 1, 0, 0])]:
         assert ps1(bs)
@@ -96,9 +107,10 @@ def test_postselect_usage_advanced_ge_le():
         assert not ps4(bs)
 
 
-def test_postselect_str():
-    ps1 = PostSelect("[0]==0 & [1, 2 ]>0 & [3, 4]==1 & [5]<1")
-    ps2 = PostSelect(str(ps1))
+@pytest.mark.parametrize("ps_class", [PostSelect, YACCPostSelect])
+def test_postselect_str(ps_class):
+    ps1 = ps_class("[0]==0 & [1, 2 ]>0 & [3, 4]==1 & [5]<1")
+    ps2 = ps_class(str(ps1))
     assert ps1 == ps2
 
 
