@@ -297,7 +297,7 @@ class ExprLexer(Lexer):
     tokens = {MODES, OPERATOR, PHOTONS}
     ignore = ' \t\n'
 
-    MODES = r"\[[,0-9\s]+\]"
+    MODES = r"\[[,\d]+\]"
 
     OPERATOR = r'[<=>]=?'
 
@@ -409,6 +409,7 @@ class YACCPostSelect(Parser):
         return method(args[0], args[1])
 
     def __call__(self, state: BasicState) -> bool:
+        state = list(state)
         if not self.expr:
             return True
         return YACCPostSelect.eval_expr(self.expr, state)
